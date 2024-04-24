@@ -3,6 +3,8 @@ include Css_Js_Core
 module Core = Css_Js_Core
 module Types = Css_AtomicTypes
 
+let default_prefix = "css"
+
 module Array = struct
   include Stdlib.Array
 
@@ -169,7 +171,7 @@ let replace_ampersand str with_ =
   in
   replace_ampersand' str with_
 
-let resolve_ampersand hash selector = replace_ampersand selector ("." ^ hash)
+let resolve_ampersand hash selector = replace_ampersand selector (Printf.sprintf ".%s-%s" default_prefix hash)
 
 let render_prelude hash selector =
   let new_selector =
@@ -178,25 +180,25 @@ let render_prelude hash selector =
   (* S (aka Selectors) are the only ones used by styled-ppx, we don't use PseudoClass neither PseucodClassParam. TODO: Remove them.
      Meanwhile we have them, it's a good idea to check if the first character of the selector is a `:` because it's expected to not have a space between the selector and the :pseudoselector. *)
   if is_a_pseudo_selector new_selector then
-    Printf.sprintf ".%s%s" hash new_selector
-  else Printf.sprintf ".%s %s" hash new_selector
+    Printf.sprintf ".%s-%s%s" default_prefix hash new_selector
+  else Printf.sprintf ".%s-%s %s" default_prefix hash new_selector
 
 let render_selectors hash rule =
   match rule with
   | S (selector, rules) when is_at_rule selector ->
     Some
-      (Printf.sprintf "%s { .%s { %s } }" selector hash
+      (Printf.sprintf "%s { .%s-%s { %s } }" selector default_prefix hash
          (render_declarations rules))
   | S (selector, rules) ->
     let prelude = render_prelude hash selector in
     Some (Printf.sprintf "%s { %s }" prelude (render_declarations rules))
   | PseudoClass (pseduoclass, rules) ->
     Some
-      (Printf.sprintf ".%s:%s { %s }" hash pseduoclass
+      (Printf.sprintf ".%s-%s:%s { %s }" default_prefix hash pseduoclass
          (render_declarations rules))
   | PseudoClassParam (pseudoclass, param, rules) ->
     Some
-      (Printf.sprintf ".%s:%s ( %s ) %s" hash pseudoclass param
+      (Printf.sprintf ".%s-%s:%s ( %s ) %s" default_prefix hash pseudoclass param
          (render_declarations rules))
   | _ -> None
 
@@ -260,7 +262,7 @@ let pp_rules hash rules =
     |> List.flatten
     |> List.filter_map render_declaration
     |> String.concat " "
-    |> fun all -> Printf.sprintf ".%s { %s }" hash all
+    |> fun all -> Printf.sprintf ".%s-%s { %s }" default_prefix hash all
   in
   let selectors =
     list_of_rules
@@ -329,11 +331,11 @@ let keyframes_to_string keyframes =
   in
   keyframes |> Array.map pp_keyframe |> Array.to_list |> String.concat ""
 
-let render_hash prefix hash styles =
+let render_hash hash styles =
   let is_label = function D ("label", value) -> Some value | _ -> None in
   match Array.find_map is_label styles with
-  | None -> Printf.sprintf "%s-%s" prefix hash
-  | Some label -> Printf.sprintf "%s-%s-%s" prefix hash label
+  | None -> Printf.sprintf "%s" hash
+  | Some label -> Printf.sprintf "%s-%s" hash label
 
 let instance = Stylesheet.make ()
 let flush () = Stylesheet.flush instance
@@ -343,9 +345,9 @@ let style (styles : rule array) =
   | [||] -> ""
   | _ ->
     let hash = Murmur2.default (rules_to_string (Array.to_list styles)) in
-    let className = render_hash "css" hash styles in
+    let className = render_hash hash styles in
     Stylesheet.push instance (className, Classnames styles);
-    className
+    Printf.sprintf "%s-%s" default_prefix className
 
 let keyframes (keyframes : (int * rule array) array) =
   match keyframes with
